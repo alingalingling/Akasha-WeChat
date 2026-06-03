@@ -1,0 +1,24 @@
+{
+    "_comment": "微信 ↔ AstrBot 桥接 - OneBot v11 版配置",
+    "weflow_base_url": "http://127.0.0.1:5031",
+    "access_token": "你的WeFlow_Access_Token",
+    "astrbot_attachments": "C:\\astrbot\\data\\attachments",
+    "bot_nicknames": [
+        "机器人昵称"
+    ],
+    "bot_wxid": "机器人自己的wxid（可选，防自回复用）",
+    "send_method": "uia",
+    "weflow_send_api": "http://127.0.0.1:5031/api/v1/message",
+    "buffer_seconds": 5,
+    "web_port": 8766,
+    "group_reply_mode": "mention",
+    "astrbot_ob_url": "ws://127.0.0.1:11229/ws",
+    "ollama_base_url": "http://127.0.0.1:61000",
+    "ollama_model": "llava:7b",
+    "ollama_timeout": 60,
+    "image_caption_provider": "ollama",
+    "image_caption_model": "llava:7b",
+    "image_caption_api_key": "",
+    "image_caption_api_base": "https://api.moonshot.cn/v1",
+    "image_caption_prompt": "请用中文简短描述这张图片的内容"
+}
