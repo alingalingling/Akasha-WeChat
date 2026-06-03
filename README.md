@@ -49,7 +49,7 @@ python main.py
 ### 3. 配置 AstrBot
 
 -  1.在 AstrBot的机器人 中添加 创建新机器人
--  2.消息平台类别选择onebotv11，aiocqhttp 适配器（WebUI 或 `cmd_config.json`）：
+-  2.消息平台类别选择onebotv11，aiocqhttp 适配器
 -  3.反向websocket端口写：11229
 -  4.其余默认即可，点击保存并开启该机器人
 
