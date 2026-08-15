@@ -9,6 +9,7 @@ Web 控制面板模块。
 import json
 import logging
 import os
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import state
@@ -190,6 +191,10 @@ body{font-family:-apple-system,'Segoe UI',sans-serif;background:linear-gradient(
 
 <script>
 // ===== 工具 =====
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function toast(msg, type) {
   var t = document.getElementById('toast');
   t.textContent = msg;
@@ -312,11 +317,11 @@ function renderConfigForm(cfg) {
         f.opts.forEach(function(o){html += '<option value="' + o.v + '"' + (val==o.v?' selected':'') + '>' + o.l + '</option>'});
         html += '</select>';
       } else if (f.type === 'textarea') {
-        html += '<textarea id="cfg_' + f.key + '" placeholder="' + (f.ph||'') + '" rows="2">' + val + '</textarea>';
+        html += '<textarea id="cfg_' + f.key + '" placeholder="' + escapeHtml(f.ph||'') + '" rows="2">' + escapeHtml(val) + '</textarea>';
       } else if (f.type === 'number') {
-        html += '<input type="number" id="cfg_' + f.key + '" value="' + val + '" placeholder="' + (f.ph||'') + '">';
+        html += '<input type="number" id="cfg_' + f.key + '" value="' + escapeHtml(val) + '" placeholder="' + escapeHtml(f.ph||'') + '">';
       } else {
-        html += '<input type="' + f.type + '" id="cfg_' + f.key + '" value="' + val.replace(/"/g,'&quot;') + '" placeholder="' + (f.ph||'') + '">';
+        html += '<input type="' + f.type + '" id="cfg_' + f.key + '" value="' + escapeHtml(val) + '" placeholder="' + escapeHtml(f.ph||'') + '">';
       }
       html += '</div>';
     });
@@ -374,6 +379,8 @@ class WebHandler(BaseHTTPRequestHandler):
                     log_lines = f.read().splitlines()[-200:]
             except Exception:
                 pass
+            # 打码日志中的 access_token，避免泄露到面板
+            log_text = re.sub(r"access_token=[^\s&]+", "access_token=***", "\n".join(log_lines))
             self.send_json({
                 "running": state.running,
                 "paused": state.paused.is_set(),
@@ -382,7 +389,7 @@ class WebHandler(BaseHTTPRequestHandler):
                 "ob_connected": ob_connected,
                 "weflow_connected": weflow_connected,
                 "group_reply_mode": state.group_reply_mode,
-                "log": "\n".join(log_lines),
+                "log": log_text,
             })
         elif self.path == "/api/config":
             try:
@@ -472,7 +479,6 @@ class WebHandler(BaseHTTPRequestHandler):
     def send_json(self, data, code=200):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
