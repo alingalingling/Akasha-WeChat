@@ -81,16 +81,20 @@ class UiaSender(BaseSender):
             self._ready = True
 
     def _find_window(self):
-        """按标题搜索微信窗口"""
+        """按标题/类名搜索微信窗口"""
         auto = self._auto
         root = auto.GetRootControl()
         for w in root.GetChildren():
             if w.ClassName in ("Chrome_WidgetWin_1", "CabinetWClass"):
                 continue
-            for kw in self.WECHAT_TITLES:
-                if kw in w.Name:
-                    self._window = w
-                    return
+            # 标题精确匹配，避免误匹配任何标题含“微信”字样的窗口
+            if w.Name in self.WECHAT_TITLES:
+                self._window = w
+                return
+            # 微信主窗口类名匹配（兼容标题变化）
+            if w.ClassName in ("Qt51514QWindowIcon", "WeChatMainWndForPC"):
+                self._window = w
+                return
 
     def _ensure_window(self) -> bool:
         """确保窗口可用"""
@@ -222,7 +226,9 @@ class UiaSender(BaseSender):
             # 切换到联系人
             if self.search_enabled and contact:
                 if contact != self._last_contact:
-                    self._switch_contact(contact)
+                    if not self._switch_contact(contact):
+                        log.error(f"切换联系人失败，中止发送: {contact}")
+                        return False
                     self._last_contact = contact
 
             try:
@@ -277,7 +283,9 @@ class UiaSender(BaseSender):
 
                 if self.search_enabled and contact:
                     if contact != self._last_contact:
-                        self._switch_contact(contact)
+                        if not self._switch_contact(contact):
+                            log.error(f"切换联系人失败，中止发送: {contact}")
+                            return False
                         self._last_contact = contact
 
                 time.sleep(random.uniform(0.3, 0.8))
@@ -303,11 +311,14 @@ class UiaSender(BaseSender):
     def _copy_image_to_clipboard(self, path: str):
         """复制图片到剪贴板（通过 PowerShell，避免 PIL 对象被当作文本复制）"""
         abs_path = os.path.abspath(path)
+        # PowerShell 单引号字符串内需将 ' 转义为 ''，防止路径含单引号破坏命令/注入
+        ps_path = abs_path.replace("'", "''")
         try:
             subprocess.run([
                 "powershell", "-WindowStyle", "Hidden", "-Command",
                 f"Add-Type -AssemblyName System.Windows.Forms;"
-                f"$img = [System.Drawing.Image]::FromFile('{abs_path}');"
+                f"Add-Type -AssemblyName System.Drawing;"
+                f"$img = [System.Drawing.Image]::FromFile('{ps_path}');"
                 f"[System.Windows.Forms.Clipboard]::SetImage($img);"
                 f"$img.Dispose()"
             ], check=True, timeout=10)

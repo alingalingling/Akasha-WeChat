@@ -12,6 +12,7 @@ AI 服务：AstrBot 通过 aiocqhttp (OneBot v11) 接入
 """
 
 # 共享状态：所有模块通过 import state 访问这些变量
+import hashlib
 import threading
 from typing import Optional
 
@@ -33,7 +34,8 @@ _self_id_int = 0       # 启动时从 config 初始化
 
 def _wxid_to_int(wxid: str) -> int:
     """将微信 wxid 映射为稳定的整数 ID。"""
-    return abs(hash(wxid)) % (2**31)
+    # 内置 hash() 带随机种子，每次重启结果不同，必须用稳定哈希
+    return int(hashlib.md5(wxid.encode("utf-8")).hexdigest()[:12], 16) % (2**31)
 
 
 # ============ 桥接实例 / 发送器 ============
@@ -43,6 +45,9 @@ bridge_lock = threading.Lock()
 sender_instance = None
 _ob_id_to_contact: dict[int, str] = {}  # OneBot user_id/group_id → 微信联系名
 ob_client_started = False
+
+# 记录机器人最近发出的文本（内容 → 发送时间戳），供 bridge_core 做自回复去重
+sent_recently: dict = {}
 
 # 群聊回复模式（运行时可变，启动时从 config 初始化）
 group_reply_mode = "mention"

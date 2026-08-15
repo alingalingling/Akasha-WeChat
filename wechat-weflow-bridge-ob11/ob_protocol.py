@@ -36,6 +36,10 @@ async def _handle_ob_api(data: dict):
     resp_data = {"status": "ok", "retcode": 0, "data": {}}
     if echo:
         resp_data["echo"] = echo
+    if action == "get_login_info":
+        # AstrBot 启动时会查询登录信息，返回机器人自身 ID 和昵称
+        nickname = config.BOT_NICKNAMES[0] if config.BOT_NICKNAMES else "wechat_bot"
+        resp_data["data"] = {"user_id": state._self_id_int, "nickname": nickname}
     # 如果 WS 暂时断连，等一会重试
     for retry in range(10):
         try:
@@ -55,6 +59,9 @@ async def _handle_ob_api(data: dict):
 
     if action in ("send_msg", "send_private_msg", "send_group_msg"):
         is_group = action == "send_group_msg"
+        if action == "send_msg":
+            # AstrBot 对群消息也常调用 send_msg，需按 params 里的 group_id 判断
+            is_group = bool(params.get("group_id"))
         target_id = params.get("group_id" if is_group else "user_id", 0)
         message = params.get("message", [])
         contact = state._ob_id_to_contact.get(target_id, str(target_id))
@@ -71,6 +78,12 @@ async def _handle_ob_api(data: dict):
                 if text:
                     await asyncio.to_thread(state.sender_instance.send_text, contact, text)
                     log.info(f"[OB11] 文字已发送至 {contact}: {text[:50]}")
+                    # 记录最近发出的文本，供 bridge_core 做自回复去重
+                    now = time.time()
+                    state.sent_recently[text] = now
+                    # 顺带清理超过 120 秒的旧条目，防止字典膨胀
+                    for k in [k for k, ts in state.sent_recently.items() if now - ts > 120]:
+                        state.sent_recently.pop(k, None)
 
             elif seg_type == "image":
                 file_val = seg_data.get("file", "")
@@ -78,6 +91,7 @@ async def _handle_ob_api(data: dict):
                     continue
 
                 img_path = None
+                is_tmp_file = False  # 仅 base64 解码生成的临时文件才删
 
                 # AstrBot 通过 aiocqhttp 发图片时用 base64:// 格式
                 if file_val.startswith("base64://"):
@@ -86,6 +100,7 @@ async def _handle_ob_api(data: dict):
                         b64_data = file_val[9:]
                         img_path = await asyncio.to_thread(_decode_base64_image, b64_data)
                         if img_path:
+                            is_tmp_file = True
                             log.info(f"[OB11] 图片已解码: {os.path.basename(img_path)}")
                     except Exception as e:
                         log.warning(f"[OB11] base64 图片解码失败: {e}")
@@ -109,8 +124,8 @@ async def _handle_ob_api(data: dict):
                         await asyncio.to_thread(state.sender_instance.send_image, contact, img_path)
                         log.info(f"[OB11] 图片已发送至 {contact}")
                     finally:
-                        # 临时文件用完删除
-                        if img_path and "tmp" in img_path:
+                        # 仅删除 base64 解码生成的临时文件，避免误删附件目录中的用户文件
+                        if is_tmp_file:
                             try:
                                 os.unlink(img_path)
                             except Exception:

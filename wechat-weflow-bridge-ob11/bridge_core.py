@@ -42,9 +42,6 @@ class WeFlowBridge:
         self.chat_histories = defaultdict(list)
         self.contact_map = {}
         self._sse_session = None
-        self._recent_seen = {}
-        self._sent_recently = {}
-        self._sse_event_keys = {}
         self._pending_image = {}  # talkerId → {"caption": None|str, "event": threading.Event()}
         self._pending_mention_images = {}  # session_id → {"data": data, "time": timestamp} 先图后文暂存
 
@@ -86,8 +83,20 @@ class WeFlowBridge:
 
         return False
 
+    def _cleanup_pending_mention_images(self):
+        """清理超过 15 秒的过期暂存图片/表情，避免一直无后续 @ 文字时内存只增不减。"""
+        now = time.time()
+        expired = [k for k, v in self._pending_mention_images.items() if now - v["time"] > 15]
+        for k in expired:
+            self._pending_mention_images.pop(k, None)
+
     def add_to_buffer(self, data):
         """将消息加入缓冲区，等待合并后统一推送给 AstrBot。"""
+        # Web 面板暂停时丢弃新消息
+        if state.paused.is_set():
+            log.info("⏸️ 已暂停处理，丢弃新消息")
+            return
+
         content = data.get("content", "")
         source_name = data.get("sourceName", "") or data.get("talkerName", "") or "未知"
 
@@ -100,6 +109,7 @@ class WeFlowBridge:
             # 图片消息（mention 模式下需 @ 才处理）
             if is_group and state.group_reply_mode == "mention" and not self._is_mentioned(data):
                 # 先图后文：暂存图片，等后续同人发 @ 文字时合并
+                self._cleanup_pending_mention_images()
                 self._pending_mention_images[session_id_data] = {"data": data, "time": time.time()}
                 log.info(f"📸 暂存图片，等待关联 @ 文字 (session={session_id_data})")
                 return
@@ -111,6 +121,7 @@ class WeFlowBridge:
             # 表情包消息（mention 模式下需 @ 才处理）
             if is_group and state.group_reply_mode == "mention" and not self._is_mentioned(data):
                 # 先图后文：暂存表情，等后续同人发 @ 文字时合并
+                self._cleanup_pending_mention_images()
                 self._pending_mention_images[session_id_data] = {"data": data, "time": time.time()}
                 log.info(f"😀 暂存表情，等待关联 @ 文字 (session={session_id_data})")
                 return
@@ -119,7 +130,7 @@ class WeFlowBridge:
             return
 
         now = time.time()
-        if content and content in self._sent_recently and now - self._sent_recently[content] < 120:
+        if content and content in state.sent_recently and now - state.sent_recently[content] < 120:
             log.info(f"⏭️ 自回复去重跳过: {content[:30]}")
             return
 
@@ -273,12 +284,25 @@ class WeFlowBridge:
 
         with self.buffer_lock:
             if sender_id in self.pending_buffers:
-                self.pending_buffers[sender_id]["processing"] = False
+                entry = self.pending_buffers[sender_id]
+                entry["processing"] = False
+                # 推送期间又有新消息进入缓冲区，重启定时推送避免滞留
+                if entry["messages"]:
+                    if entry["timer"]:
+                        entry["timer"].cancel()
+                    entry["timer_version"] += 1
+                    version = entry["timer_version"]
+                    log.info(f"📩 {contact} 缓冲期间有新消息，{config.BUFFER_SECONDS}s 后继续推送")
+                    timer = threading.Timer(config.BUFFER_SECONDS, lambda v=version, sid=sender_id: self.process_sender(sid, v))
+                    timer.daemon = True
+                    timer.start()
+                    entry["timer"] = timer
 
     def listen_sse(self):
         """连接 WeFlow SSE 推送。"""
         sse_url = f"{config.WE_FLOW_BASE_URL}/api/v1/push/messages?access_token={config.ACCESS_TOKEN}"
-        log.info(f"连接 WeFlow 推送服务: {sse_url}")
+        # 日志中打码 access_token，避免泄露
+        log.info(f"连接 WeFlow 推送服务: {config.WE_FLOW_BASE_URL}/api/v1/push/messages?access_token=***")
         headers = {"Accept": "text/event-stream", "Cache-Control": "no-cache"}
 
         try:
@@ -306,6 +330,9 @@ class WeFlowBridge:
                         if raw_id in self.processed_ids:
                             continue
                         self.processed_ids.add(raw_id)
+                        # 上限保护：超过 10000 时清理约一半，避免长跑内存膨胀
+                        if len(self.processed_ids) > 10000:
+                            self.processed_ids = set(list(self.processed_ids)[-5000:])
                         if not self.should_ignore(data):
                             if data.get("sessionType", "") == "group" or "@chatroom" in data.get("sessionId", ""):
                                 content = data.get("content", "")
@@ -393,6 +420,14 @@ class WeFlowBridge:
         talker_id = data.get("talkerId", "") or data.get("sessionId", "")
         is_group = bool(group_name) or "@chatroom" in session_id
 
+        # 与 add_to_buffer 相同规则的 buffer key：群聊为 session_id_发言人，私聊为 session_id
+        sender_in_group = data.get("senderName", "") or data.get("sender", "") or data.get("sourceName", "")
+        session_id_data = data.get("sessionId", "") or source_name
+        if is_group and sender_in_group:
+            img_buffer_key = f"{session_id_data}_{sender_in_group}"
+        else:
+            img_buffer_key = session_id_data
+
         # 注册待处理的图片（ollama 完成前标记为 pending）
         img_event = threading.Event()
         self._pending_image[talker_id] = {"caption": None, "event": img_event}
@@ -445,16 +480,16 @@ class WeFlowBridge:
                     timer.start()
                     self.pending_buffers[batch_key]["timer"] = timer
                     self.pending_buffers[batch_key]["timer_version"] = version
-                elif talker_id in self.pending_buffers:
+                elif img_buffer_key in self.pending_buffers:
                     # 已有文本在排队，注入图片上下文
-                    entry = self.pending_buffers[talker_id]
+                    entry = self.pending_buffers[img_buffer_key]
                     entry["messages"].insert(0, f"[图片: {caption_text}]")
                     entry["image_ready"] = True
                     log.info(f"📝 图片已注入待处理文本队列")
                 else:
                     # 没有文本排队，创建单条图片消息处理
                     log.info(f"📩 图片无文本跟随，直接处理")
-                    self.pending_buffers[talker_id] = {
+                    self.pending_buffers[img_buffer_key] = {
                         "messages": [f"[图片: {caption_text}]"],
                         "timer": None,
                         "timer_version": 0,
@@ -464,14 +499,14 @@ class WeFlowBridge:
                         "source_name": source_name,
                         "session_id_data": session_id,
                         "group_name": group_name if is_group else "",
-                        "sender_in_group": "",
+                        "sender_in_group": sender_in_group if is_group else "",
                     }
                     version = 1
-                    timer = threading.Timer(2, lambda v=version, sid=talker_id: self.process_sender(sid, v))
+                    timer = threading.Timer(2, lambda v=version, sid=img_buffer_key: self.process_sender(sid, v))
                     timer.daemon = True
                     timer.start()
-                    self.pending_buffers[talker_id]["timer"] = timer
-                    self.pending_buffers[talker_id]["timer_version"] = version
+                    self.pending_buffers[img_buffer_key]["timer"] = timer
+                    self.pending_buffers[img_buffer_key]["timer_version"] = version
         finally:
             # 确保 Event 被设置
             img_event.set()
@@ -486,8 +521,10 @@ class WeFlowBridge:
         log.info(f"😀 收到表情包: {source_name}" +
                  (f" (群:{group_name})" if group_name else ""))
 
-        talker_id = data.get("talkerId", "") or data.get("sessionId", "")
         is_group = bool(group_name) or "@chatroom" in session_id
+        # 与 add_to_buffer 相同规则的发言人 / session 标识
+        sender_in_group = data.get("senderName", "") or data.get("sender", "") or data.get("sourceName", "")
+        session_id_data = data.get("sessionId", "") or source_name
 
         # 尝试下载图片描述
         try:
@@ -503,13 +540,13 @@ class WeFlowBridge:
                 log.info("😀 表情包无可用图片，保留原文")
 
             # 直接注入缓冲区（不等待，立即推送）
-            self.add_text_to_buffer(talker_id, source_name, group_name,
-                                    session_id, content, is_group, talker_id)
+            self.add_text_to_buffer(session_id_data, source_name, group_name,
+                                    content, is_group, sender_in_group)
         except Exception as e:
             log.warning(f"😀 表情包处理异常: {e}")
             # 异常时也保底发送原文
-            self.add_text_to_buffer(talker_id, source_name, group_name,
-                                    session_id, content, is_group, talker_id)
+            self.add_text_to_buffer(session_id_data, source_name, group_name,
+                                    content, is_group, sender_in_group)
 
     def _inject_cached_image(self, session_id, buffer_key, version):
         """下载缓存图片 → 描述 → 注入到 buffer 条目（在缓冲计时器到期前完成）"""
@@ -533,10 +570,17 @@ class WeFlowBridge:
             log.warning(f"📸 缓存图片处理异常: {e}")
 
     def add_text_to_buffer(self, session_id_data, source_name, group_name,
-                           session_id, content, is_group, sender_key):
+                           content, is_group, sender_in_group):
         """通用：将一段文本直接加入缓冲队列（供表情/图片等异步处理完后调用）"""
         with self.buffer_lock:
-            buffer_key = sender_key
+            # 与 add_to_buffer 相同规则的 buffer key
+            if is_group and state.group_reply_mode == "batch":
+                base_name = re.sub(r'\s*\(\d+\)\s*$', '', group_name or source_name).strip()
+                buffer_key = f"__batch__{base_name}"
+            elif is_group and sender_in_group:
+                buffer_key = f"{session_id_data}_{sender_in_group}"
+            else:
+                buffer_key = session_id_data
             if buffer_key not in self.pending_buffers:
                 self.pending_buffers[buffer_key] = {
                     "messages": [],
@@ -546,9 +590,9 @@ class WeFlowBridge:
                     "contact": group_name if is_group and group_name else source_name,
                     "is_group": is_group,
                     "source_name": source_name,
-                    "session_id_data": session_id,
+                    "session_id_data": session_id_data,
                     "group_name": group_name if is_group else "",
-                    "sender_in_group": source_name if is_group else "",
+                    "sender_in_group": sender_in_group if is_group else "",
                 }
             entry = self.pending_buffers[buffer_key]
             entry["messages"].append(content)
