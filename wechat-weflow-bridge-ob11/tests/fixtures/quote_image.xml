@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<msg>
+	<appmsg appid="" sdkver="0">
+		<title>@小助 这是啥</title>
+		<des />
+		<action />
+		<type>57</type>
+		<showtype>0</showtype>
+		<soundtype>0</soundtype>
+		<mediatagname />
+		<messageext />
+		<messageaction />
+		<content />
+		<contentattr>0</contentattr>
+		<url />
+		<lowurl />
+		<dataurl />
+		<lowdataurl />
+		<songalbumurl />
+		<songlyric />
+		<template_id />
+		<appattach>
+			<totallen>0</totallen>
+			<attachid />
+			<emoticonmd5 />
+			<fileext />
+			<aeskey />
+		</appattach>
+		<extinfo />
+		<sourceusername />
+		<sourcedisplayname />
+		<thumburl />
+		<md5 />
+		<statextstr />
+		<refermsg>
+			<content>wxid_author:
+&lt;?xml version="1.0"?&gt;
+&lt;msg&gt;
+	&lt;img aeskey="af38366d033c23bf113b19f76a90036c" encryver="1" cdnthumbaeskey="af38366d033c23bf113b19f76a90036c" cdnthumburl="305f020100044b30490201000204cddf479202032f565d02042841aa3d02046ae337f0042434643366636131652d663035362d343838392d613235642d333637663030326133336661020405283801020100040d004d1a49000000000000000000" cdnthumblength="4246" cdnthumbheight="168" cdnthumbwidth="180" cdnmidheight="0" cdnmidwidth="0" cdnhdheight="0" cdnhdwidth="0" cdnmidimgurl="305f020100044b30490201000204cddf479202032f565d02042841aa3d02046ae337f0042434643366636131652d663035362d343838392d613235642d333637663030326133336661020405283801020100040d004d1a49000000000000000000" length="87998" cdnbigimgurl="305f020100044b30490201000204cddf479202032f565d02042841aa3d02046ae337f0042434643366636131652d663035362d343838392d613235642d333637663030326133336661020405283801020100040d004d1a49000000000000000000" hdlength="87998" md5="3398762cea6e4388c6788b2ec2f2ba20"&gt;
+		&lt;secHashInfoBase64 /&gt;
+		&lt;live&gt;
+			&lt;duration&gt;0&lt;/duration&gt;
+			&lt;size&gt;0&lt;/size&gt;
+			&lt;md5 /&gt;
+			&lt;fileid /&gt;
+			&lt;hdsize&gt;0&lt;/hdsize&gt;
+			&lt;hdmd5 /&gt;
+			&lt;hdfileid /&gt;
+			&lt;stillimagetimems&gt;0&lt;/stillimagetimems&gt;
+		&lt;/live&gt;
+	&lt;/img&gt;
+	&lt;platform_signature /&gt;
+	&lt;imgdatahash /&gt;
+	&lt;ImgSourceInfo&gt;
+		&lt;ImgSourceUrl /&gt;
+		&lt;BizType&gt;0&lt;/BizType&gt;
+	&lt;/ImgSourceInfo&gt;
+&lt;/msg&gt;
+</content>
+			<createtime>1793275888</createtime>
+			<displayname>群友A</displayname>
+			<fromusr>12345678901@chatroom</fromusr>
+			<svrid>7066182232866673373</svrid>
+			<msgsource>&lt;msgsource&gt;
+	&lt;img_file_name&gt;ed9dfb4e-5c11-4e78-8fb4-f5b723695eea.png&lt;/img_file_name&gt;
+	&lt;alnode&gt;
+		&lt;fr&gt;1&lt;/fr&gt;
+		&lt;cf&gt;3&lt;/cf&gt;
+	&lt;/alnode&gt;
+	&lt;sec_msg_node&gt;
+		&lt;uuid&gt;4ea360bdb7e90dab12407aaf954f3ec0_&lt;/uuid&gt;
+		&lt;risk-file-flag /&gt;
+		&lt;risk-file-md5-list /&gt;
+	&lt;/sec_msg_node&gt;
+	&lt;imgmsg_pd cdnbigimgurl_size="87998" cdnbigimgurl_pd_pri="30" cdnbigimgurl_pd="0" /&gt;
+	&lt;silence&gt;1&lt;/silence&gt;
+	&lt;membercount&gt;17&lt;/membercount&gt;
+	&lt;signature&gt;N0_V1_z030jOdE|v1_9a1+kHwy&lt;/signature&gt;
+	&lt;tmp_node&gt;
+		&lt;publisher-id&gt;&lt;/publisher-id&gt;
+	&lt;/tmp_node&gt;
+&lt;/msgsource&gt;
+</msgsource>
+			<type>3</type>
+			<chatusr>wxid_author</chatusr>
+		</refermsg>
+	</appmsg>
+	<fromusername>wxid_sender</fromusername>
+	<scene>0</scene>
+	<appinfo>
+		<version>1</version>
+		<appname></appname>
+	</appinfo>
+	<commenturl></commenturl>
+</msg>
